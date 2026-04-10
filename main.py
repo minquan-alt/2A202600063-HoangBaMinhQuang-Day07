@@ -25,7 +25,39 @@ SAMPLE_FILES = [
     "data/customer_support_playbook.txt",
     "data/chunking_experiment_report.md",
     "data/vi_retrieval_notes.md",
+    "/home/quang_ai/main/2A202600063-HoangBaMinhQuang-Day07/data/huong_dan_nau_an.md"
 ]
+
+
+def _build_metadata(path: Path, content: str) -> dict:
+    metadata = {"source": str(path), "extension": path.suffix.lower()}
+
+    # Keep default metadata unchanged for regular files.
+    if path.name.lower() != "huong_dan_nau_an.md":
+        return metadata
+
+    lines = content.splitlines()
+    non_empty_lines = [line for line in lines if line.strip()]
+    digit_only_lines = [line for line in non_empty_lines if line.strip().replace(".", "").isdigit()]
+    short_lines = [line for line in non_empty_lines if len(line.strip()) <= 5]
+    total_non_empty = max(1, len(non_empty_lines))
+
+    metadata.update(
+        {
+            "doc_type": "ocr_recipe_catalog",
+            "department": "content",
+            "domain": "vietnamese_recipes",
+            "language": "vi",
+            "ingestion_method": "ocr",
+            "char_count": len(content),
+            "line_count": len(lines),
+            "has_toc": "MỤC LỤC" in content,
+            "digit_only_line_ratio": round(len(digit_only_lines) / total_non_empty, 4),
+            "short_line_ratio": round(len(short_lines) / total_non_empty, 4),
+            "ocr_noise_level": "high",
+        }
+    )
+    return metadata
 
 
 def load_documents_from_files(file_paths: list[str]) -> list[Document]:
@@ -49,7 +81,7 @@ def load_documents_from_files(file_paths: list[str]) -> list[Document]:
             Document(
                 id=path.stem,
                 content=content,
-                metadata={"source": str(path), "extension": path.suffix.lower()},
+                metadata=_build_metadata(path, content),
             )
         )
 
@@ -64,7 +96,7 @@ def demo_llm(prompt: str) -> str:
 
 def run_manual_demo(question: str | None = None, sample_files: list[str] | None = None) -> int:
     files = sample_files or SAMPLE_FILES
-    query = question or "Summarize the key information from the loaded files."
+    query = "Tôi muốn ăn cá"
 
     print("=== Manual File Test ===")
     print("Accepted file types: .md, .txt")
