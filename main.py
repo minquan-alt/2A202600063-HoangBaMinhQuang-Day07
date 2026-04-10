@@ -9,8 +9,10 @@ from dotenv import load_dotenv
 from src.agent import KnowledgeBaseAgent
 from src.embeddings import (
     EMBEDDING_PROVIDER_ENV,
+    GEMINI_EMBEDDING_MODEL,
     LOCAL_EMBEDDING_MODEL,
     OPENAI_EMBEDDING_MODEL,
+    GeminiEmbedder,
     LocalEmbedder,
     OpenAIEmbedder,
     _mock_embed,
@@ -94,6 +96,21 @@ def demo_llm(prompt: str) -> str:
     return f"[DEMO LLM] Generated answer from prompt preview: {preview}..."
 
 
+def _with_runtime_fallback(embedder):
+    """Wrap an embedder and fall back to mock on runtime API errors (e.g. quota)."""
+
+    def _safe_embed(text: str) -> list[float]:
+        try:
+            return embedder(text)
+        except Exception as exc:
+            print(f"Embedding request failed ({exc.__class__.__name__}); fallback to mock embeddings.")
+            return _mock_embed(text)
+
+    backend_name = getattr(embedder, "_backend_name", embedder.__class__.__name__)
+    _safe_embed._backend_name = f"{backend_name} (runtime fallback: mock)"
+    return _safe_embed
+
+
 def run_manual_demo(question: str | None = None, sample_files: list[str] | None = None) -> int:
     files = sample_files or SAMPLE_FILES
     query = "Tôi muốn ăn cá"
@@ -122,6 +139,11 @@ def run_manual_demo(question: str | None = None, sample_files: list[str] | None 
             embedder = LocalEmbedder(model_name=os.getenv("LOCAL_EMBEDDING_MODEL", LOCAL_EMBEDDING_MODEL))
         except Exception:
             embedder = _mock_embed
+    elif provider == "gemini":
+        try:
+            embedder = GeminiEmbedder(model_name=os.getenv("GEMINI_EMBEDDING_MODEL", GEMINI_EMBEDDING_MODEL))
+        except Exception:
+            embedder = _mock_embed
     elif provider == "openai":
         try:
             embedder = OpenAIEmbedder(model_name=os.getenv("OPENAI_EMBEDDING_MODEL", OPENAI_EMBEDDING_MODEL))
@@ -129,6 +151,9 @@ def run_manual_demo(question: str | None = None, sample_files: list[str] | None 
             embedder = _mock_embed
     else:
         embedder = _mock_embed
+
+    if embedder is not _mock_embed:
+        embedder = _with_runtime_fallback(embedder)
 
     print(f"\nEmbedding backend: {getattr(embedder, '_backend_name', embedder.__class__.__name__)}")
 

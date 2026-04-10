@@ -65,14 +65,27 @@ class EmbeddingStore:
             "id": doc.id,
             "content": doc.content,
             "metadata": metadata,
-            "embedding": self._embedding_fn(doc.content),
+            "embedding": self._embed_text(doc.content, is_query=False),
         }
+
+    def _is_e5_backend(self) -> bool:
+        model_name = getattr(self._embedding_fn, "model_name", "")
+        backend_name = getattr(self._embedding_fn, "_backend_name", "")
+        hint = f"{model_name} {backend_name}".lower()
+        return "e5" in hint
+
+    def _embed_text(self, text: str, is_query: bool) -> list[float]:
+        # E5 models are trained with explicit prefixes.
+        if self._is_e5_backend():
+            prefix = "query: " if is_query else "passage: "
+            text = f"{prefix}{text}"
+        return self._embedding_fn(text)
 
     def _search_records(self, query: str, records: list[dict[str, Any]], top_k: int) -> list[dict[str, Any]]:
         if top_k <= 0 or not records:
             return []
 
-        query_vec = self._embedding_fn(query)
+        query_vec = self._embed_text(query, is_query=True)
         scored: list[dict[str, Any]] = []
 
         for r in records:
@@ -136,7 +149,7 @@ class EmbeddingStore:
 
         if self._use_qdrant and self._client is not None and self._collection is not None:
             try:
-                query_vec = self._embedding_fn(query)
+                query_vec = self._embed_text(query, is_query=True)
                 points, _ = self._client.query_points(
                     collection_name=self._collection,
                     query=query_vec,
